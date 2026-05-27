@@ -28,12 +28,12 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
-    st.image(
-        "https://upload.wikimedia.org/wikipedia/commons/4/4e/NSE_logo.svg",
-        width=80,
+    st.markdown(
+        "<div style='font-size:52px;line-height:1;margin-bottom:4px'>📈</div>"
+        "<div style='font-size:18px;font-weight:700;margin-bottom:2px'>India Stock Analyzer</div>"
+        "<div style='font-size:12px;opacity:0.65'>Live NSE/BSE Research Platform</div>",
+        unsafe_allow_html=True,
     )
-    st.markdown("## India Stock Analyzer")
-    st.caption("Live NSE/BSE Research Platform")
     st.divider()
 
     ticker_input = st.text_input(
@@ -66,7 +66,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Last updated: {datetime.now():%H:%M:%S, %d %b %Y}")
     st.caption("Data: yfinance / NSE")
-    st.caption("AI: Claude claude-sonnet-4-6")
+    st.caption("AI: Claude Sonnet 4.6")
 
 # ---------------------------------------------------------------------------
 # Main page
@@ -83,7 +83,7 @@ st.info(
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Platform", "NSE / BSE Live Data")
-col2.metric("AI Engine", "Claude claude-sonnet-4-6")
+col2.metric("AI Engine", "Claude Sonnet 4.6")
 col3.metric("Refresh Rate", "Every 5 minutes")
 
 st.markdown("""
