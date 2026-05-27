@@ -51,8 +51,8 @@ def waterfall_chart(result: dict) -> go.Figure:
         height=380,
         margin=dict(l=0, r=0, t=40, b=0),
         showlegend=False,
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
     return fig
 

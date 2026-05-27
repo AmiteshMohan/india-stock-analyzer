@@ -66,10 +66,10 @@ def bar_chart(df: pd.DataFrame, cols: list[str], title: str, yaxis: str = "") ->
         height=320,
         margin=dict(l=0, r=0, t=60, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
-    fig.update_yaxes(showgrid=True, gridcolor="#EEEEEE")
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.2)", tickformat=",.0f")
     return fig
 
 
@@ -90,10 +90,10 @@ def line_chart(df: pd.DataFrame, cols: list[str], title: str, yaxis: str = "") -
         height=280,
         margin=dict(l=0, r=0, t=60, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
-    fig.update_yaxes(showgrid=True, gridcolor="#EEEEEE")
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.2)", tickformat=",.2f")
     return fig
 
 

@@ -62,11 +62,11 @@ def build_price_chart(hist: pd.DataFrame, nifty: pd.DataFrame, ticker: str) -> g
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         height=380,
         margin=dict(l=0, r=0, t=65, b=0),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
-    fig.update_xaxes(showgrid=True, gridcolor="#EEEEEE")
-    fig.update_yaxes(showgrid=True, gridcolor="#EEEEEE")
+    fig.update_xaxes(showgrid=True, gridcolor="rgba(128,128,128,0.2)")
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.2)")
     return fig
 
 
@@ -87,11 +87,11 @@ def build_volume_chart(hist: pd.DataFrame, ticker: str) -> go.Figure:
         yaxis_title="Volume",
         height=220,
         margin=dict(l=0, r=0, t=35, b=0),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
     )
     fig.update_xaxes(showgrid=False)
-    fig.update_yaxes(showgrid=True, gridcolor="#EEEEEE")
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(128,128,128,0.2)")
     return fig
 
 
