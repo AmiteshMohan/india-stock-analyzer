@@ -48,6 +48,29 @@ _KNOWN_SECTORS = {
     "DRREDDY.NS": "Healthcare", "CIPLA.NS": "Healthcare",
 }
 
+_KNOWN_INDUSTRIES = {
+    "RELIANCE.NS": "Oil & Gas Refining & Marketing",
+    "TCS.NS": "Information Technology Services",
+    "HDFCBANK.NS": "Banks - Regional",
+    "INFY.NS": "Information Technology Services",
+    "ICICIBANK.NS": "Banks - Regional",
+    "HINDUNILVR.NS": "Household & Personal Products",
+    "ITC.NS": "Tobacco",
+    "SBIN.NS": "Banks - Regional",
+    "BHARTIARTL.NS": "Telecom Services",
+    "KOTAKBANK.NS": "Banks - Regional",
+    "LT.NS": "Engineering & Construction",
+    "AXISBANK.NS": "Banks - Regional",
+    "SUNPHARMA.NS": "Drug Manufacturers",
+    "DRREDDY.NS": "Drug Manufacturers",
+    "CIPLA.NS": "Drug Manufacturers",
+    "WIPRO.NS": "Information Technology Services",
+    "MARUTI.NS": "Auto Manufacturers",
+    "BAJFINANCE.NS": "Financial Services",
+    "ASIANPAINT.NS": "Specialty Chemicals",
+    "TITAN.NS": "Luxury Goods",
+}
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -183,6 +206,11 @@ def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, s
         if curr_assets and curr_liab and curr_liab != 0:
             out["currentRatio"] = curr_assets / curr_liab
 
+        if equity and equity > 0 and shares and shares > 1e6 and price:
+            book_per_share = equity / shares
+            if book_per_share > 0:
+                out["priceToBook"] = price / book_per_share
+
     return out
 
 
@@ -227,31 +255,65 @@ def get_stock_info(ticker: str) -> dict:
 
         computed = _compute_ratios(income, balance, price, shares)
 
-        # 3. t.info — try for fields we can't compute (sector, longName, beta, etc.)
+        # 3. Dividend yield from trailing 12-month dividends (works on cloud)
+        dividend_yield_computed = None
+        try:
+            divs = _retry(lambda: t.dividends)
+            if divs is not None and not divs.empty:
+                tz = divs.index.tz
+                cutoff = pd.Timestamp.now(tz=tz) - pd.DateOffset(years=1)
+                trailing = float(divs[divs.index >= cutoff].sum())
+                if trailing > 0 and price:
+                    dividend_yield_computed = trailing / price
+        except Exception:
+            pass
+
+        # 4. Beta vs Nifty 50 computed from 1-year price history
+        beta_computed = None
+        try:
+            s_hist = _retry(lambda: t.history(period="1y"))
+            n_hist = _retry(lambda: yf.Ticker("^NSEI", session=_make_session()).history(period="1y"))
+            if not s_hist.empty and not n_hist.empty:
+                s_close = s_hist["Close"].copy()
+                n_close = n_hist["Close"].copy()
+                s_close.index = pd.to_datetime(s_close.index).tz_localize(None)
+                n_close.index = pd.to_datetime(n_close.index).tz_localize(None)
+                combined = pd.concat([s_close, n_close], axis=1, join="inner")
+                combined.columns = ["stock", "nifty"]
+                rets = combined.pct_change().dropna()
+                if len(rets) >= 30:
+                    cov_mat = rets.cov()
+                    beta_computed = cov_mat.loc["stock", "nifty"] / cov_mat.loc["nifty", "nifty"]
+        except Exception:
+            pass
+
+        # 5. t.info — try for fields we can't compute (sector, longName, etc.)
         #    Falls back silently if blocked on cloud
         try:
             info = _retry(lambda: t.info, retries=2, delay=1.0) or {}
         except Exception:
             info = {}
 
+        avg_vol = getattr(fi, "three_month_average_volume", None)
+
         result = {
             "ticker":           ticker,
             "longName":         _safe_val(info, "longName") or _KNOWN_NAMES.get(ticker, ticker),
             "sector":           _safe_val(info, "sector")   or _KNOWN_SECTORS.get(ticker, "N/A"),
-            "industry":         _safe_val(info, "industry", "N/A"),
+            "industry":         _safe_val(info, "industry") or _KNOWN_INDUSTRIES.get(ticker, "N/A"),
             "currentPrice":     price,
             "previousClose":    prev_close,
             "marketCap":        market_cap,
             "trailingPE":       _safe_val(info, "trailingPE")       or computed.get("trailingPE"),
             "forwardPE":        _safe_val(info, "forwardPE"),
-            "priceToBook":      _safe_val(info, "priceToBook"),
+            "priceToBook":      _safe_val(info, "priceToBook")      or computed.get("priceToBook"),
             "trailingEps":      _safe_val(info, "trailingEps")      or computed.get("trailingEps"),
-            "dividendYield":    _safe_val(info, "dividendYield"),
+            "dividendYield":    _safe_val(info, "dividendYield")    or dividend_yield_computed,
             "fiftyTwoWeekHigh": wk52_high or _safe_val(info, "fiftyTwoWeekHigh"),
             "fiftyTwoWeekLow":  wk52_low  or _safe_val(info, "fiftyTwoWeekLow"),
-            "volume":           getattr(fi, "three_month_average_volume", None) or _safe_val(info, "volume", 0),
-            "averageVolume":    _safe_val(info, "averageVolume", 0),
-            "beta":             _safe_val(info, "beta"),
+            "volume":           avg_vol or _safe_val(info, "volume", 0),
+            "averageVolume":    avg_vol or _safe_val(info, "averageVolume", 0),
+            "beta":             _safe_val(info, "beta")             or beta_computed,
             "revenueGrowth":    _safe_val(info, "revenueGrowth")    or computed.get("revenueGrowth"),
             "earningsGrowth":   _safe_val(info, "earningsGrowth")   or computed.get("earningsGrowth"),
             "returnOnEquity":   _safe_val(info, "returnOnEquity")   or computed.get("returnOnEquity"),
