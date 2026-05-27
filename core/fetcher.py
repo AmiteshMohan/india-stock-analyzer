@@ -82,27 +82,36 @@ def get_stock_info(ticker: str) -> dict:
     """
     try:
         t = _ticker(ticker)
-        info = _retry(lambda: t.info) or {}
 
-        if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
+        # fast_info is a lightweight endpoint — reliable on cloud IPs
+        fi = _retry(lambda: t.fast_info)
+        price = getattr(fi, "last_price", None) or getattr(fi, "previous_close", None)
+        if not price:
             return {"error": f"No data found for ticker '{ticker}'. Check the symbol (e.g. RELIANCE.NS)."}
+        prev_close = getattr(fi, "previous_close", None) or price
+
+        # info for fundamentals (PE, margins, sector, etc.) — optional, fall back gracefully
+        try:
+            info = _retry(lambda: t.info) or {}
+        except Exception:
+            info = {}
 
         result = {
             "ticker": ticker,
             "longName": _safe_val(info, "longName", ticker),
             "sector": _safe_val(info, "sector", "N/A"),
             "industry": _safe_val(info, "industry", "N/A"),
-            "currentPrice": _safe_val(info, "currentPrice") or _safe_val(info, "regularMarketPrice", 0.0),
-            "previousClose": _safe_val(info, "previousClose", 0.0),
-            "marketCap": _safe_val(info, "marketCap", 0),
+            "currentPrice": price,
+            "previousClose": prev_close,
+            "marketCap": getattr(fi, "market_cap", None) or _safe_val(info, "marketCap", 0),
             "trailingPE": _safe_val(info, "trailingPE"),
             "forwardPE": _safe_val(info, "forwardPE"),
             "priceToBook": _safe_val(info, "priceToBook"),
             "trailingEps": _safe_val(info, "trailingEps"),
             "dividendYield": _safe_val(info, "dividendYield"),
-            "fiftyTwoWeekHigh": _safe_val(info, "fiftyTwoWeekHigh"),
-            "fiftyTwoWeekLow": _safe_val(info, "fiftyTwoWeekLow"),
-            "volume": _safe_val(info, "volume", 0),
+            "fiftyTwoWeekHigh": getattr(fi, "fifty_two_week_high", None) or _safe_val(info, "fiftyTwoWeekHigh"),
+            "fiftyTwoWeekLow": getattr(fi, "fifty_two_week_low", None) or _safe_val(info, "fiftyTwoWeekLow"),
+            "volume": getattr(fi, "three_month_average_volume", None) or _safe_val(info, "volume", 0),
             "averageVolume": _safe_val(info, "averageVolume", 0),
             "beta": _safe_val(info, "beta"),
             "revenueGrowth": _safe_val(info, "revenueGrowth"),
