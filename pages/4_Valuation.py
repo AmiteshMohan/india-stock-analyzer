@@ -86,11 +86,8 @@ shares = 0.0
 net_debt = 0.0
 
 try:
-    import yfinance as yf
-    t = yf.Ticker(ticker)
     bs = fins["balance_sheet"]
     if not bs.empty:
-        # Net debt = total debt - cash
         total_debt = 0.0
         cash = 0.0
         for lbl in ["Total Debt", "Long Term Debt"]:
@@ -103,8 +100,8 @@ try:
                 break
         net_debt = total_debt - cash
 
-    raw = t.info or {}
-    shares = raw.get("sharesOutstanding") or raw.get("impliedSharesOutstanding") or 1.0
+    # sharesOutstanding comes from fast_info via get_stock_info — works on cloud
+    shares = info.get("sharesOutstanding") or 1.0
 except Exception:
     shares = 1.0
 
