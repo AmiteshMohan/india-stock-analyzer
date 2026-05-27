@@ -6,6 +6,26 @@ Built with Python and Streamlit. No coding knowledge needed to use it once it's 
 
 ---
 
+## Screenshots
+
+| Overview — Live Price & Chart | Overview — Key Statistics |
+|:---:|:---:|
+| ![Overview Price Chart](docs/screenshots/01_overview_price_chart.png) | ![Key Statistics](docs/screenshots/02_overview_key_statistics.png) |
+
+| Fundamentals — Income Statement | Fundamentals — Margins & Balance Sheet |
+|:---:|:---:|
+| ![Income Statement](docs/screenshots/03_fundamentals_income_statement.png) | ![Margins & Balance Sheet](docs/screenshots/04_fundamentals_margins_balance_sheet.png) |
+
+| Fundamentals — Cash Flow | AI Morning Note |
+|:---:|:---:|
+| ![Cash Flow](docs/screenshots/05_fundamentals_cashflow.png) | ![AI Morning Note](docs/screenshots/06_ai_morning_note.png) |
+
+| DCF Valuation | Sector Screener |
+|:---:|:---:|
+| ![DCF Valuation](docs/screenshots/07_valuation_dcf.png) | ![Sector Screener](docs/screenshots/08_sector_screener_table.png) |
+
+---
+
 ## What does this app do?
 
 Type any Indian stock ticker (like `RELIANCE.NS` or `TCS.NS`) and the app instantly gives you:
