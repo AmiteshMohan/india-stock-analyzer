@@ -64,8 +64,8 @@ def bar_chart(df: pd.DataFrame, cols: list[str], title: str, yaxis: str = "") ->
         barmode="group",
         yaxis_title=yaxis,
         height=320,
-        margin=dict(l=0, r=0, t=35, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(l=0, r=0, t=60, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
@@ -88,8 +88,8 @@ def line_chart(df: pd.DataFrame, cols: list[str], title: str, yaxis: str = "") -
         title=title,
         yaxis_title=yaxis,
         height=280,
-        margin=dict(l=0, r=0, t=35, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(l=0, r=0, t=60, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )

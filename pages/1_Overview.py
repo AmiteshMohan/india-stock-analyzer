@@ -59,9 +59,9 @@ def build_price_chart(hist: pd.DataFrame, nifty: pd.DataFrame, ticker: str) -> g
         yaxis_title="Indexed Price",
         xaxis_title="Date",
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         height=380,
-        margin=dict(l=0, r=0, t=40, b=0),
+        margin=dict(l=0, r=0, t=65, b=0),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )

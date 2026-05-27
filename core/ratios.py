@@ -31,9 +31,10 @@ def extract_income_summary(income_stmt: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     cols = income_stmt.columns[:4]  # most recent 4 years
-    rev = _row(income_stmt, "Total Revenue", "Revenue") or pd.Series([np.nan] * len(cols), index=cols)
-    net = _row(income_stmt, "Net Income", "Net Income Common Stockholders") or pd.Series([np.nan] * len(cols), index=cols)
-    eps = _row(income_stmt, "Basic EPS", "Diluted EPS") or pd.Series([np.nan] * len(cols), index=cols)
+    _nan = pd.Series([np.nan] * len(cols), index=cols)
+    rev = _row(income_stmt, "Total Revenue", "Revenue"); rev = _nan if rev is None else rev
+    net = _row(income_stmt, "Net Income", "Net Income Common Stockholders"); net = _nan if net is None else net
+    eps = _row(income_stmt, "Basic EPS", "Diluted EPS"); eps = _nan if eps is None else eps
 
     labels = [str(c.year) if hasattr(c, "year") else str(c)[:4] for c in cols]
 
