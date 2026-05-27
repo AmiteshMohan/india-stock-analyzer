@@ -143,12 +143,14 @@ def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, s
         if net0 is not None and net1 is not None and net1 != 0:
             out["earningsGrowth"] = (net0 - net1) / abs(net1)
 
-        if eps_r is not None:
+        # Prefer net0/shares (always in INR) over the "Basic EPS" row which
+        # may be in USD for cross-listed stocks (e.g. INFY), causing wrong P/E.
+        if net0 is not None and shares and shares > 1e6:
+            out["trailingEps"] = net0 / shares
+        elif eps_r is not None:
             eps_val = _val(eps_r, 0)
             if eps_val:
                 out["trailingEps"] = eps_val
-        elif net0 and shares and shares > 1:
-            out["trailingEps"] = net0 / shares
 
         eps_val = out.get("trailingEps")
         if eps_val and price and eps_val != 0:
@@ -204,8 +206,12 @@ def get_stock_info(ticker: str) -> dict:
         if not price:
             return {"error": f"No data found for ticker '{ticker}'. Check the symbol (e.g. RELIANCE.NS)."}
         prev_close = getattr(fi, "previous_close", None) or price
-        shares     = getattr(fi, "shares", None) or 1.0
         market_cap = getattr(fi, "market_cap", None) or 0
+
+        # shares: prefer fast_info, fall back to market_cap/price (reliable on cloud)
+        shares = getattr(fi, "shares", None)
+        if not shares or shares < 1000:
+            shares = (market_cap / price) if (market_cap and price) else 1.0
         wk52_high  = getattr(fi, "year_high", None) or getattr(fi, "fifty_two_week_high", None)
         wk52_low   = getattr(fi, "year_low", None)  or getattr(fi, "fifty_two_week_low", None)
         currency   = getattr(fi, "currency", "INR") or "INR"
