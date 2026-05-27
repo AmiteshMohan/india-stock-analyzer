@@ -4,6 +4,8 @@ All functions are cached for 5 minutes to avoid API rate limits.
 """
 from __future__ import annotations
 
+import time
+import requests
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -14,6 +16,25 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _make_session() -> requests.Session:
+    """Return a requests Session with a browser User-Agent to avoid rate limits on cloud IPs."""
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+    })
+    return session
+
+
+def _ticker(symbol: str) -> yf.Ticker:
+    return yf.Ticker(symbol, session=_make_session())
+
 
 def _safe_val(info: dict, key: str, default=None):
     """Return info[key] if present and not NaN, else default."""
@@ -28,11 +49,24 @@ def _safe_val(info: dict, key: str, default=None):
     return val
 
 
+def _retry(fn, retries: int = 3, delay: float = 2.0):
+    """Call fn(), retrying up to `retries` times on rate-limit or connection errors."""
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as exc:
+            msg = str(exc).lower()
+            if attempt < retries - 1 and any(k in msg for k in ("429", "too many", "rate", "connection")):
+                time.sleep(delay * (attempt + 1))
+                continue
+            raise
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def get_stock_info(ticker: str) -> dict:
     """
     Fetch summary fundamentals for a single NSE/BSE ticker.
@@ -47,8 +81,8 @@ def get_stock_info(ticker: str) -> dict:
         error (str | None)
     """
     try:
-        t = yf.Ticker(ticker)
-        info = t.info or {}
+        t = _ticker(ticker)
+        info = _retry(lambda: t.info) or {}
 
         if not info or info.get("regularMarketPrice") is None and info.get("currentPrice") is None:
             return {"error": f"No data found for ticker '{ticker}'. Check the symbol (e.g. RELIANCE.NS)."}
@@ -100,7 +134,7 @@ def get_stock_info(ticker: str) -> dict:
         return {"error": f"Failed to fetch data for '{ticker}': {exc}", "ticker": ticker}
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def get_price_history(ticker: str, period: str = "1y") -> pd.DataFrame:
     """
     Fetch OHLCV price history for the given ticker and period.
@@ -114,8 +148,8 @@ def get_price_history(ticker: str, period: str = "1y") -> pd.DataFrame:
         Returns empty DataFrame on error.
     """
     try:
-        t = yf.Ticker(ticker)
-        df = t.history(period=period)
+        t = _ticker(ticker)
+        df = _retry(lambda: t.history(period=period))
         if df.empty:
             return pd.DataFrame()
         df.index = pd.to_datetime(df.index).tz_localize(None)
@@ -124,7 +158,7 @@ def get_price_history(ticker: str, period: str = "1y") -> pd.DataFrame:
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=600)
 def get_financials(ticker: str) -> dict:
     """
     Fetch income statement, balance sheet, and cash flow statement.
@@ -134,10 +168,10 @@ def get_financials(ticker: str) -> dict:
         and 'error' (None or str).
     """
     try:
-        t = yf.Ticker(ticker)
-        income = t.financials          # annual income statement
-        balance = t.balance_sheet      # annual balance sheet
-        cashflow = t.cashflow          # annual cash flow
+        t = _ticker(ticker)
+        income = _retry(lambda: t.financials)
+        balance = _retry(lambda: t.balance_sheet)
+        cashflow = _retry(lambda: t.cashflow)
 
         return {
             "income_stmt": income if income is not None and not income.empty else pd.DataFrame(),
