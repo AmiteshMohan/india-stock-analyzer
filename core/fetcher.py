@@ -4,6 +4,7 @@ All functions are cached for 10 minutes to reduce API load on cloud.
 """
 from __future__ import annotations
 
+import re
 import time
 import requests
 import streamlit as st
@@ -466,6 +467,73 @@ def _norm_div_yield(from_info, from_computed):
 
 
 # ---------------------------------------------------------------------------
+# Screener.in scraper
+# ---------------------------------------------------------------------------
+
+_SCREENER_SYMBOL_MAP = {
+    # NSE symbols where the default strip(.NS) doesn't match Screener.in URL.
+    # Use BSE code or alternate slug instead.
+    "TATAMOTORS.NS": "500570",
+}
+
+
+def _fetch_screener_data(ticker: str) -> dict:
+    """
+    Scrape key ratios directly from Screener.in.
+    Returns dict with available keys or {} on any failure.
+    Keys: pe, book_value, div_yield_pct, roce_pct, roe_pct
+    """
+    # Map NSE/BSE ticker to Screener.in company symbol
+    symbol = _SCREENER_SYMBOL_MAP.get(ticker) or ticker.upper().replace(".NS", "").replace(".BO", "")
+
+    _LABELS = {
+        "Stock P/E":      "pe",
+        "Book Value":     "book_value",
+        "Dividend Yield": "div_yield_pct",
+        "ROCE":           "roce_pct",
+        "ROE":            "roe_pct",
+    }
+
+    result: dict = {}
+
+    for url in [
+        f"https://www.screener.in/company/{symbol}/consolidated/",
+        f"https://www.screener.in/company/{symbol}/",
+    ]:
+        try:
+            sess = _make_session()
+            sess.headers.update({
+                "Referer":        "https://www.screener.in/",
+                "Accept":         "text/html,application/xhtml+xml,*/*;q=0.9",
+                "Accept-Language":"en-US,en;q=0.5",
+            })
+            resp = sess.get(url, timeout=10, allow_redirects=True)
+            if resp.status_code != 200:
+                continue
+            html = resp.text
+
+            for label, key in _LABELS.items():
+                idx = html.find(label)
+                if idx == -1:
+                    continue
+                # Grab the next <span class="number...">VALUE</span> within 400 chars
+                chunk = html[idx: idx + 400]
+                m = re.search(r'class="number[^"]*">([0-9,]+\.?[0-9]*)<', chunk)
+                if m:
+                    try:
+                        result[key] = float(m.group(1).replace(",", ""))
+                    except Exception:
+                        pass
+
+            if result:
+                break  # got data from consolidated page, no need for standalone
+        except Exception:
+            continue
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -560,7 +628,43 @@ def get_stock_info(ticker: str) -> dict:
         except Exception:
             info = {}
 
+        # 6. Screener.in — authoritative source for P/E and key ratios.
+        #    Always preferred over computed/yfinance values when available.
+        scr = _fetch_screener_data(ticker)
+
         avg_vol = getattr(fi, "three_month_average_volume", None)
+
+        # P/E: Screener.in → t.info → TTM-computed (in that priority order)
+        trailing_pe = (
+            scr.get("pe")
+            or _safe_val(info, "trailingPE")
+            or computed.get("trailingPE")
+        )
+
+        # Derive EPS from Screener P/E if we used it (price / PE = EPS)
+        trailing_eps = _safe_val(info, "trailingEps") or computed.get("trailingEps")
+        if scr.get("pe") and price and scr["pe"] != 0:
+            trailing_eps = price / scr["pe"]
+
+        # ROE: Screener.in is % (5.58) → convert to decimal; else use computed
+        roe_computed = computed.get("returnOnEquity")
+        if scr.get("roe_pct") is not None:
+            roe_val = scr["roe_pct"] / 100
+        else:
+            roe_val = _safe_val(info, "returnOnEquity") or roe_computed
+
+        # Dividend yield: Screener.in is % (1.50) → convert to decimal
+        div_yield_scr = None
+        if scr.get("div_yield_pct") is not None:
+            div_yield_scr = scr["div_yield_pct"] / 100
+        div_yield = div_yield_scr or _norm_div_yield(
+            _safe_val(info, "dividendYield"), dividend_yield_computed
+        )
+
+        # Price-to-book: compute from Screener book value per share if available
+        pb_val = _safe_val(info, "priceToBook") or computed.get("priceToBook")
+        if scr.get("book_value") and price and scr["book_value"] > 0:
+            pb_val = round(price / scr["book_value"], 2)
 
         result = {
             "ticker":           ticker,
@@ -570,11 +674,11 @@ def get_stock_info(ticker: str) -> dict:
             "currentPrice":     price,
             "previousClose":    prev_close,
             "marketCap":        market_cap,
-            "trailingPE":       _safe_val(info, "trailingPE")       or computed.get("trailingPE"),
+            "trailingPE":       trailing_pe,
             "forwardPE":        _safe_val(info, "forwardPE"),
-            "priceToBook":      _safe_val(info, "priceToBook")      or computed.get("priceToBook"),
-            "trailingEps":      _safe_val(info, "trailingEps")      or computed.get("trailingEps"),
-            "dividendYield":    _norm_div_yield(_safe_val(info, "dividendYield"), dividend_yield_computed),
+            "priceToBook":      pb_val,
+            "trailingEps":      trailing_eps,
+            "dividendYield":    div_yield,
             "fiftyTwoWeekHigh": wk52_high or _safe_val(info, "fiftyTwoWeekHigh"),
             "fiftyTwoWeekLow":  wk52_low  or _safe_val(info, "fiftyTwoWeekLow"),
             "volume":           avg_vol or _safe_val(info, "volume", 0),
@@ -582,7 +686,7 @@ def get_stock_info(ticker: str) -> dict:
             "beta":             _safe_val(info, "beta")             or beta_computed,
             "revenueGrowth":    _safe_val(info, "revenueGrowth")    or computed.get("revenueGrowth"),
             "earningsGrowth":   _safe_val(info, "earningsGrowth")   or computed.get("earningsGrowth"),
-            "returnOnEquity":   _safe_val(info, "returnOnEquity")   or computed.get("returnOnEquity"),
+            "returnOnEquity":   roe_val,
             "returnOnAssets":   _safe_val(info, "returnOnAssets")   or computed.get("returnOnAssets"),
             "debtToEquity":     _norm_dte(_safe_val(info, "debtToEquity"), computed.get("debtToEquity")),
             "currentRatio":     _safe_val(info, "currentRatio")     or computed.get("currentRatio"),
