@@ -172,7 +172,7 @@ stats = {
     "Revenue Growth": pct(info["revenueGrowth"]),
     "Earnings Growth": pct(info["earningsGrowth"]),
     "ROE": pct(info["returnOnEquity"]),
-    "Debt/Equity": f"{info['debtToEquity']:.2f}" if info["debtToEquity"] else "N/A",
+    "Debt/Equity": f"{info['debtToEquity']:.2f}x" if info["debtToEquity"] is not None else "N/A",
     "Current Ratio": f"{info['currentRatio']:.2f}" if info["currentRatio"] else "N/A",
     "Operating Margin": pct(info["operatingMargins"]),
     "Net Profit Margin": pct(info["profitMargins"]),

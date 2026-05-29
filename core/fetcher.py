@@ -195,8 +195,7 @@ def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, s
 
         if equity and equity != 0:
             if debt is not None:
-                # Match yfinance format: D/E expressed as (debt/equity)*100
-                out["debtToEquity"] = round((debt / abs(equity)) * 100, 2)
+                out["debtToEquity"] = round(debt / abs(equity), 4)
             if net0 is not None:
                 out["returnOnEquity"] = net0 / equity
 
@@ -212,6 +211,46 @@ def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, s
                 out["priceToBook"] = price / book_per_share
 
     return out
+
+
+# ---------------------------------------------------------------------------
+# Normalizers — fix yfinance format inconsistencies
+# ---------------------------------------------------------------------------
+
+def _norm_dte(from_info, from_computed):
+    """
+    yfinance t.info returns debtToEquity as (debt/equity)*100.
+    Our _compute_ratios returns actual ratio. Normalize everything to actual ratio.
+    """
+    raw = from_info if from_info is not None else from_computed
+    if raw is None:
+        return None
+    try:
+        v = float(raw)
+        # Values from t.info are ×100 format; computed is already actual ratio.
+        # Heuristic: if raw came from t.info (from_info is not None) it needs ÷100.
+        if from_info is not None:
+            return round(v / 100, 4)
+        return round(v, 4)
+    except Exception:
+        return None
+
+
+def _norm_div_yield(from_info, from_computed):
+    """
+    yfinance t.info returns dividendYield in % format for Indian tickers
+    (e.g., 5.43 means 5.43%). Our computed value is decimal (0.054).
+    Normalize everything to decimal so pct() displays correctly.
+    """
+    if from_info is not None:
+        try:
+            v = float(from_info)
+            # If > 0.20 it's almost certainly already in % format — divide by 100.
+            # Handles both 5.43 (TCS) and 0.41 (Reliance) which are both in % format.
+            return v / 100
+        except Exception:
+            pass
+    return from_computed  # already decimal from t.dividends / price
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +347,7 @@ def get_stock_info(ticker: str) -> dict:
             "forwardPE":        _safe_val(info, "forwardPE"),
             "priceToBook":      _safe_val(info, "priceToBook")      or computed.get("priceToBook"),
             "trailingEps":      _safe_val(info, "trailingEps")      or computed.get("trailingEps"),
-            "dividendYield":    _safe_val(info, "dividendYield")    or dividend_yield_computed,
+            "dividendYield":    _norm_div_yield(_safe_val(info, "dividendYield"), dividend_yield_computed),
             "fiftyTwoWeekHigh": wk52_high or _safe_val(info, "fiftyTwoWeekHigh"),
             "fiftyTwoWeekLow":  wk52_low  or _safe_val(info, "fiftyTwoWeekLow"),
             "volume":           avg_vol or _safe_val(info, "volume", 0),
@@ -318,7 +357,7 @@ def get_stock_info(ticker: str) -> dict:
             "earningsGrowth":   _safe_val(info, "earningsGrowth")   or computed.get("earningsGrowth"),
             "returnOnEquity":   _safe_val(info, "returnOnEquity")   or computed.get("returnOnEquity"),
             "returnOnAssets":   _safe_val(info, "returnOnAssets")   or computed.get("returnOnAssets"),
-            "debtToEquity":     _safe_val(info, "debtToEquity")     or computed.get("debtToEquity"),
+            "debtToEquity":     _norm_dte(_safe_val(info, "debtToEquity"), computed.get("debtToEquity")),
             "currentRatio":     _safe_val(info, "currentRatio")     or computed.get("currentRatio"),
             "operatingMargins": _safe_val(info, "operatingMargins") or computed.get("operatingMargins"),
             "profitMargins":    _safe_val(info, "profitMargins")    or computed.get("profitMargins"),

@@ -166,7 +166,7 @@ c1, c2, c3, c4 = st.columns(4)
 with c1:
     color_metric("Return on Equity (ROE)", roe if roe else None, "roe", "%")
 with c2:
-    color_metric("Debt-to-Equity", dte, "debt_to_equity", "")
+    color_metric("Debt-to-Equity", dte, "debt_to_equity", "x")
 with c3:
     color_metric("Current Ratio", cr, "current_ratio", "x")
 with c4:

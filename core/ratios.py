@@ -119,7 +119,7 @@ def health_color(value: Optional[float], metric: str) -> str:
     thresholds = {
         "roe":              {"green": 15, "amber": 8},        # % — higher is better
         "current_ratio":    {"green": 1.5, "amber": 1.0},     # higher is better
-        "debt_to_equity":   {"green": 50, "amber": 100},      # lower is better (D/E in %)
+        "debt_to_equity":   {"green": 0.5, "amber": 1.0},      # lower is better (D/E as actual ratio)
     }
 
     t = thresholds.get(metric)
