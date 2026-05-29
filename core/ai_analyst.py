@@ -224,14 +224,21 @@ FINANCIAL STATEMENTS DATA (from NSE filings via yfinance):
 ---
 
 IMPORTANT RULES FOR THIS NOTE:
-1. Use the FINANCIAL STATEMENTS DATA above as ground truth for all historical figures. Do NOT make up numbers that contradict the provided data.
-2. For forward estimates (FY27E, FY28E), derive them from stated CAGR assumptions — clearly label as estimates.
-3. Cite every key data point with its source (e.g., "Source: yfinance/NSE filings", "Source: Screener.in", "Source: StockAnalysis.com", etc.)
-4. All monetary figures in ₹ Crore unless stated otherwise.
-5. Use Indian fiscal year convention: FY26 = April 2025 – March 2026.
-6. The most recent fiscal year in the data above is the latest completed FY.
+1. You have access to web_search. USE IT to fetch live, accurate data for this stock before writing the note. Specifically search for:
+   - "{name} {ticker} Screener.in fundamentals" → for verified P/E, P/B, ROE, D/E, market cap
+   - "{name} annual results FY26" or "{ticker} Q4 results" → for latest revenue, net profit, EPS
+   - "{name} StockAnalysis NSE" → for forward P/E, TTM EPS, analyst estimates
+   - "{name} shareholding pattern" → for promoter %, FII %, DII % (from Screener.in or BSE)
+   - "{name} analyst target price" → for Nirmal Bang, ICICI Direct, HDFC Securities targets
+   Search for at least 3-4 of these to populate the note with accurate, sourced data.
+
+2. Use the FINANCIAL STATEMENTS DATA provided as a cross-check, but PREFER web search results when there is a conflict — they are more current.
+3. For forward estimates (FY27E, FY28E), derive from confirmed growth rates or analyst consensus found via search. Label clearly as estimates.
+4. Cite EVERY key data point with its specific source URL or publication name (e.g., "Screener.in", "StockAnalysis.com", "IndiaIPO.in", "TradeBrains.in", "NirmalBang.com").
+5. All monetary figures in ₹ Crore unless stated otherwise.
+6. Use Indian fiscal year convention: FY26 = April 2025 – March 2026.
 7. Be specific and opinionated — this is read by portfolio managers at 7am, not retail investors.
-8. If data is unavailable, say "N/A" or "not available" — do not hallucinate numbers.
+8. DO NOT make up numbers. If data is unavailable after searching, say "N/A" explicitly.
 
 ---
 
@@ -442,12 +449,23 @@ def generate_morning_note(
         return
 
     client = anthropic.Anthropic(api_key=api_key)
-    prompt = _build_morning_note_prompt(stock_data, fins)
+
+    try:
+        prompt = _build_morning_note_prompt(stock_data, fins)
+    except Exception as exc:
+        import traceback
+        yield f"**Error building prompt:** {type(exc).__name__}: {exc}\n\n```\n{traceback.format_exc()}\n```"
+        return
+
+    # Web search tool lets Claude look up live data from Screener.in,
+    # StockAnalysis.com, NSE filings, etc. for accurate sourced numbers.
+    tools = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}]
 
     try:
         with client.messages.stream(
             model=MODEL,
             max_tokens=6000,
+            tools=tools,
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
             for text in stream.text_stream:
@@ -457,7 +475,17 @@ def generate_morning_note(
     except anthropic.RateLimitError:
         yield "**Error:** Claude API rate limit hit. Please wait a moment and try again."
     except Exception as exc:
-        yield f"**Error generating note:** {exc}"
+        # If web_search tool is not available on this API tier, fall back without it
+        try:
+            with client.messages.stream(
+                model=MODEL,
+                max_tokens=6000,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+        except Exception as exc2:
+            yield f"**Error generating note:** {exc2}"
 
 
 def answer_question(
