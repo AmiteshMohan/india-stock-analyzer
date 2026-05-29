@@ -408,6 +408,86 @@ Write the note using EXACTLY this structure with markdown:
 Now write the full note following the structure above. Fill in all [placeholders] with actual data from the financial statements provided, or clearly-labelled estimates. The note should be comprehensive, professional, opinionated, and sourced."""
 
 
+def _build_short_note_prompt(stock_data: dict) -> str:
+    """Build a concise (~400-word) snapshot note. No web search needed."""
+    name   = stock_data.get("longName", stock_data.get("ticker", "Unknown"))
+    ticker = stock_data.get("ticker", "")
+    exch   = stock_data.get("exchange", "NSE")
+    sector = stock_data.get("sector", "N/A")
+    price  = stock_data.get("currentPrice", "N/A")
+    chg    = stock_data.get("changePercent", 0) or 0
+    mcap   = stock_data.get("marketCap", 0) or 0
+    mcap_cr = round(mcap / 1e7, 0) if mcap else "N/A"
+    pe     = stock_data.get("trailingPE")
+    fpe    = stock_data.get("forwardPE")
+    pb     = stock_data.get("priceToBook")
+    eps    = stock_data.get("trailingEps")
+    div    = stock_data.get("dividendYield")
+    roe    = stock_data.get("returnOnEquity")
+    dte    = stock_data.get("debtToEquity")
+    beta   = stock_data.get("beta")
+    hi52   = stock_data.get("fiftyTwoWeekHigh", "N/A")
+    lo52   = stock_data.get("fiftyTwoWeekLow", "N/A")
+    op_m   = stock_data.get("operatingMargins")
+    net_m  = stock_data.get("profitMargins")
+    rev_g  = stock_data.get("revenueGrowth")
+
+    def fmt(v, d=2):
+        try:
+            return f"{float(v):,.{d}f}"
+        except Exception:
+            return "N/A"
+
+    def pct(v):
+        try:
+            return f"{float(v)*100:.2f}%"
+        except Exception:
+            return "N/A"
+
+    return f"""You are Amitesh, a senior equity analyst. Write a CONCISE morning snapshot note for {name} ({ticker}, {exch}).
+
+DATA:
+- Price: ₹{price} ({chg:+.2f}% today) | Market Cap: ₹{mcap_cr} Cr
+- 52W High: ₹{hi52} | 52W Low: ₹{lo52}
+- Trailing P/E: {fmt(pe)} | Forward P/E: {fmt(fpe)} | P/B: {fmt(pb)}
+- EPS (TTM): ₹{fmt(eps)} | Dividend Yield: {pct(div)} | Beta: {fmt(beta)}
+- Operating Margin: {pct(op_m)} | Net Margin: {pct(net_m)} | Revenue Growth: {pct(rev_g)}
+- ROE: {pct(roe)} | Debt/Equity: {fmt(dte)}
+- Sector: {sector}
+
+Write using EXACTLY this structure (keep total output under 500 words):
+
+---
+# {name} ({ticker}) — Morning Snapshot
+**{exch} | {sector} | ₹{price} | [BUY / HOLD / SELL]**
+
+> **One-line thesis:** [The single most important thing a portfolio manager needs to know right now.]
+
+### Key Statistics
+| Metric | Value | Metric | Value |
+|--------|-------|--------|-------|
+| Price | ₹{price} | Market Cap | ₹{mcap_cr} Cr |
+| 52W High | ₹{hi52} | 52W Low | ₹{lo52} |
+| Trailing P/E | {fmt(pe)}x | Forward P/E | {fmt(fpe)}x |
+| P/B | {fmt(pb)}x | EPS (TTM) | ₹{fmt(eps)} |
+| Operating Margin | {pct(op_m)} | Net Margin | {pct(net_m)} |
+| ROE | {pct(roe)} | Debt/Equity | {fmt(dte)}x |
+| Beta | {fmt(beta)} | Dividend Yield | {pct(div)} |
+
+### Investment Case (3 bullets)
+- **Bull:** [specific quantitative catalyst or valuation argument]
+- **Bear:** [the one risk that could break the thesis]
+- **Verdict:** [BUY/HOLD/SELL at current price with a specific price target range ₹X–₹Y]
+
+### What to Watch
+[2-3 sentences on the next key event or data point — earnings date, product launch, policy decision, etc. — that will move the stock.]
+
+---
+*Snapshot note by Amitesh | Based on yfinance data | Not investment advice.*
+
+Now write the note. Be direct, specific, and opinionated. No filler sentences."""
+
+
 def _build_qa_prompt(question: str, stock_data: dict) -> str:
     name   = stock_data.get("longName", stock_data.get("ticker", "the stock"))
     sector = stock_data.get("sector", "unknown sector")
@@ -432,16 +512,16 @@ If you need more data to answer accurately, say so. Keep under 300 words unless 
 def generate_morning_note(
     stock_data: dict,
     fins: Optional[dict] = None,
+    short: bool = False,
 ) -> Generator[str, None, None]:
     """
-    Stream a detailed research note from Claude for the given stock.
+    Stream a research note from Claude.
 
     Args:
         stock_data: dict returned by core/fetcher.get_stock_info()
         fins: dict returned by core/fetcher.get_financials()
-
-    Yields:
-        str chunks as they arrive from the Claude streaming API.
+        short: if True, generates a quick snapshot note (~$0.02) instead of
+               the full detailed note with web search (~$0.10)
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -451,13 +531,32 @@ def generate_morning_note(
     client = anthropic.Anthropic(api_key=api_key)
 
     try:
-        prompt = _build_morning_note_prompt(stock_data, fins)
+        if short:
+            prompt = _build_short_note_prompt(stock_data)
+        else:
+            prompt = _build_morning_note_prompt(stock_data, fins)
     except Exception as exc:
         import traceback
         yield f"**Error building prompt:** {type(exc).__name__}: {exc}\n\n```\n{traceback.format_exc()}\n```"
         return
 
-    # Web search tool lets Claude look up live data from Screener.in,
+    if short:
+        # Quick note: no web search, low token cap → cheap and fast
+        try:
+            with client.messages.stream(
+                model=MODEL,
+                max_tokens=1200,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+        except anthropic.AuthenticationError:
+            yield "**Error:** Invalid API key. Please check your ANTHROPIC_API_KEY in .env."
+        except Exception as exc:
+            yield f"**Error generating note:** {exc}"
+        return
+
+    # Detailed note: web search lets Claude pull live data from Screener.in,
     # StockAnalysis.com, NSE filings, etc. for accurate sourced numbers.
     tools = [{"type": "web_search_20250305", "name": "web_search", "max_uses": 5}]
 
@@ -475,7 +574,7 @@ def generate_morning_note(
     except anthropic.RateLimitError:
         yield "**Error:** Claude API rate limit hit. Please wait a moment and try again."
     except Exception as exc:
-        # If web_search tool is not available on this API tier, fall back without it
+        # Fallback without web search if tool unavailable on this API tier
         try:
             with client.messages.stream(
                 model=MODEL,

@@ -55,43 +55,64 @@ st.divider()
 # Morning note generation
 # ---------------------------------------------------------------------------
 
-st.info(
-    "This generates a **detailed institutional research note** — "
-    "fundamentals snapshot, income trend, balance sheet, cash flow projections, "
-    "valuation scenarios, peer comparison, risk matrix, and trade recommendation. "
-    "Generation takes ~30–60 seconds.",
-    icon="ℹ️",
-)
+col_a, col_b = st.columns([1, 2])
+with col_a:
+    note_type = st.radio(
+        "Note type",
+        ["Quick Snapshot", "Detailed Research Note"],
+        index=1,
+        help="Quick: ~10 sec, ~$0.02 — key stats + 3-bullet thesis.\n\nDetailed: ~30-60 sec, ~$0.10 — full institutional note with web search.",
+    )
 
-generate_btn = st.button("✨ Generate Detailed Research Note", type="primary", use_container_width=True)
+is_short = note_type == "Quick Snapshot"
 
-if generate_btn or "morning_note_text" in st.session_state:
+with col_b:
+    if is_short:
+        st.info(
+            "**Quick Snapshot** — price, key ratios, 3-bullet investment case, and what to watch. "
+            "No web search. ~10 seconds.",
+            icon="⚡",
+        )
+    else:
+        st.info(
+            "**Detailed Research Note** — full institutional note with income trend, balance sheet, "
+            "cash flow projections, valuation scenarios, peer comparison, risk matrix, and recommendation. "
+            "Uses live web search for sourced data. ~30–60 seconds.",
+            icon="📊",
+        )
+
+btn_label = "⚡ Generate Quick Snapshot" if is_short else "✨ Generate Detailed Research Note"
+generate_btn = st.button(btn_label, type="primary", use_container_width=True)
+
+# Use separate session-state keys so switching type doesn't show stale note
+note_key = "morning_note_short" if is_short else "morning_note_text"
+
+if generate_btn or note_key in st.session_state:
     note_container = st.empty()
 
     if generate_btn:
-        # Clear previous note when regenerating
-        st.session_state.pop("morning_note_text", None)
+        st.session_state.pop(note_key, None)
         full_note = ""
+        spinner_msg = "Claude is writing your quick snapshot (~10 seconds)…" if is_short else "Claude is writing your detailed research note (~30-60 seconds)…"
         with note_container.container():
-            with st.spinner("Claude is writing your detailed research note (~30-60 seconds)…"):
+            with st.spinner(spinner_msg):
                 note_box = st.empty()
-                for chunk in generate_morning_note(info, fins):
+                for chunk in generate_morning_note(info, fins, short=is_short):
                     full_note += chunk
                     note_box.markdown(full_note + "▌")
                 note_box.markdown(full_note)
 
-        st.session_state["morning_note_text"] = full_note
+        st.session_state[note_key] = full_note
 
     else:
-        # Show previously generated note
-        full_note = st.session_state["morning_note_text"]
+        full_note = st.session_state[note_key]
         with note_container.container():
             st.markdown(full_note)
 
     # ---- PDF download ----
     st.divider()
     try:
-        pdf_bytes = build_pdf(st.session_state["morning_note_text"], info)
+        pdf_bytes = build_pdf(st.session_state[note_key], info)
         st.download_button(
             label="📄 Download as PDF",
             data=pdf_bytes,
@@ -103,7 +124,7 @@ if generate_btn or "morning_note_text" in st.session_state:
         st.warning(f"PDF generation failed: {e}")
 
 else:
-    st.info("Click **Generate Morning Note** to create an AI-powered research note for this stock.")
+    st.info("Select a note type above and click **Generate** to create an AI-powered research note for this stock.")
 
 st.divider()
 

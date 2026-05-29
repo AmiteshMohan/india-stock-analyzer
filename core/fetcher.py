@@ -340,14 +340,16 @@ def _val(series, idx: int = 0):
         return None
 
 
-def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, shares: float) -> dict:
+def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float,
+                    shares: float, ttm_net: float = None) -> dict:
     """
     Derive key financial ratios from income statement and balance sheet.
-    Used as primary source when t.info is unavailable on cloud IPs.
+    ttm_net: trailing-twelve-month net income (sum of 4 quarterly figures) —
+             used for EPS/P/E so we match Screener.in TTM P/E, not last FY.
     """
     out: dict = {}
 
-    # --- Income statement ---
+    # --- Income statement (annual, used for growth/margins) ---
     if income is not None and not income.empty:
         rev   = _row(income, "Total Revenue", "Revenue")
         net   = _row(income, "Net Income", "Net Income Common Stockholders")
@@ -370,8 +372,7 @@ def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, s
         if net0 is not None and net1 is not None and net1 != 0:
             out["earningsGrowth"] = (net0 - net1) / abs(net1)
 
-        # Prefer net0/shares (always in INR) over the "Basic EPS" row which
-        # may be in USD for cross-listed stocks (e.g. INFY), causing wrong P/E.
+        # Initial EPS from annual net income (may be overridden by TTM below)
         if net0 is not None and shares and shares > 1e6:
             out["trailingEps"] = net0 / shares
         elif eps_r is not None:
@@ -383,8 +384,15 @@ def _compute_ratios(income: pd.DataFrame, balance: pd.DataFrame, price: float, s
         if eps_val and price and eps_val != 0:
             out["trailingPE"] = price / eps_val
 
-        # Store net0 for balance sheet ratios below
         out["_net0"] = net0
+
+    # Override EPS/P/E with TTM (last 4 quarters) for accuracy.
+    # This matches how Screener.in, NSE, StockAnalysis.com compute trailing P/E.
+    if ttm_net is not None and shares and shares > 1e6:
+        ttm_eps = ttm_net / shares
+        out["trailingEps"] = ttm_eps
+        if price and ttm_eps != 0:
+            out["trailingPE"] = price / ttm_eps
 
     # --- Balance sheet ---
     if balance is not None and not balance.empty:
@@ -496,7 +504,22 @@ def get_stock_info(ticker: str) -> dict:
             income  = pd.DataFrame()
             balance = pd.DataFrame()
 
-        computed = _compute_ratios(income, balance, price, shares)
+        # TTM net income from last 4 quarters — gives accurate trailing P/E
+        # matching Screener.in / NSE, unlike using the latest annual figure.
+        ttm_net = None
+        try:
+            q_income = _retry(lambda: t.quarterly_financials)
+            if q_income is not None and not q_income.empty:
+                q_net = _row(q_income, "Net Income", "Net Income Common Stockholders")
+                if q_net is not None:
+                    vals = [_val(q_net, i) for i in range(min(4, len(q_net)))]
+                    vals = [v for v in vals if v is not None]
+                    if len(vals) >= 2:
+                        ttm_net = sum(vals)
+        except Exception:
+            pass
+
+        computed = _compute_ratios(income, balance, price, shares, ttm_net=ttm_net)
 
         # 3. Dividend yield from trailing 12-month dividends (works on cloud)
         dividend_yield_computed = None
