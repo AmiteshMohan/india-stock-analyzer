@@ -11,7 +11,7 @@ from datetime import date
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from core.fetcher import get_stock_info
+from core.fetcher import get_stock_info, get_financials
 from core.ai_analyst import generate_morning_note, answer_question
 from reports.pdf_builder import build_pdf
 
@@ -23,7 +23,7 @@ st.set_page_config(page_title="AI Morning Note | India Stock Analyzer", layout="
 
 ticker = st.session_state.get("ticker", "RELIANCE.NS")
 st.title(f"AI Morning Note — {ticker}")
-st.caption(f"Powered by Claude claude-sonnet-4-6 | {date.today():%d %B %Y}")
+st.caption(f"Powered by Claude Sonnet 4.6 | {date.today():%d %B %Y}")
 
 # API key check
 if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -33,9 +33,10 @@ if not os.environ.get("ANTHROPIC_API_KEY"):
     )
     st.stop()
 
-# Load stock data
-with st.spinner("Fetching live data…"):
+# Load stock data + financial statements
+with st.spinner("Fetching live data and financial statements…"):
     info = get_stock_info(ticker)
+    fins = get_financials(ticker)
 
 if info.get("error"):
     st.error(info["error"])
@@ -54,28 +55,27 @@ st.divider()
 # Morning note generation
 # ---------------------------------------------------------------------------
 
-col_left, col_right = st.columns([2, 1])
+st.info(
+    "This generates a **detailed institutional research note** — "
+    "fundamentals snapshot, income trend, balance sheet, cash flow projections, "
+    "valuation scenarios, peer comparison, risk matrix, and trade recommendation. "
+    "Generation takes ~30–60 seconds.",
+    icon="ℹ️",
+)
 
-with col_left:
-    generate_btn = st.button("✨ Generate Morning Note", type="primary", use_container_width=True)
-
-with col_right:
-    style_hint = st.selectbox(
-        "Note style",
-        ["Institutional (default)", "Short briefing", "Detailed deep-dive"],
-        label_visibility="collapsed",
-    )
+generate_btn = st.button("✨ Generate Detailed Research Note", type="primary", use_container_width=True)
 
 if generate_btn or "morning_note_text" in st.session_state:
     note_container = st.empty()
 
     if generate_btn:
-        # Stream fresh note
+        # Clear previous note when regenerating
+        st.session_state.pop("morning_note_text", None)
         full_note = ""
         with note_container.container():
-            with st.spinner("Claude is writing your note…"):
+            with st.spinner("Claude is writing your detailed research note (~30-60 seconds)…"):
                 note_box = st.empty()
-                for chunk in generate_morning_note(info):
+                for chunk in generate_morning_note(info, fins):
                     full_note += chunk
                     note_box.markdown(full_note + "▌")
                 note_box.markdown(full_note)
